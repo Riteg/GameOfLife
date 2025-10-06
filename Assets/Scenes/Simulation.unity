@@ -148,8 +148,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d6ad0f4fc88166e43beeec343f656012, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GridManager
-  _width: 200
-  _height: 200
+  _width: 400
+  _height: 400
 --- !u!4 &103598983
 Transform:
   m_ObjectHideFlags: 0
@@ -194,7 +194,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c30f5ae9b95eea48953f57d847f0ed5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TickManager
-  ticksPerSecond: 3
+  ticksPerSecond: 5
 --- !u!4 &113610701
 Transform:
   m_ObjectHideFlags: 0
@@ -316,7 +316,7 @@ Camera:
   far clip plane: 1000
   field of view: 34
   orthographic: 1
-  orthographic size: 15
+  orthographic size: 200
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
