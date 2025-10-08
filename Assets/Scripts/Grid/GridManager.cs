@@ -24,4 +24,10 @@ public class GridManager : MonoBehaviour
         _grid = grid;
         OnGridUpdated?.Invoke(_grid);
     }
+
+    public void SetCells(byte[] cells)
+    {
+        _grid.SetCellsPadded(cells);
+        OnGridUpdated?.Invoke(_grid);
+    }
 }

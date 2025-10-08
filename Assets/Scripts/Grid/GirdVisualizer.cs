@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -21,7 +22,7 @@ public class GridVisualizer : MonoBehaviour
     {
         if (_gridManager == null)
         {
-            Debug.LogError("GridManager reference is missing in GridVisualizer.");
+            UnityEngine.Debug.LogError("GridManager reference is missing in GridVisualizer.");
             return;
         }
 
@@ -30,17 +31,20 @@ public class GridVisualizer : MonoBehaviour
 
     public void CreateGrid(Grid grid)
     {
-        _cellVisualizers = new CellVisualizer[grid.GridWidth, grid.GridHeight];
+        Stopwatch time = new Stopwatch();
+        time.Start();
 
-        for (int x = 0; x < grid.GridWidth; x++)
+        _cellVisualizers = new CellVisualizer[grid.Width, grid.Height];
+
+        for (int x = 0; x < grid.Width; x++)
         {
-            for (int y = 0; y < grid.GridHeight; y++)
+            for (int y = 0; y < grid.Height; y++)
             {
-                Cell cell = grid.GetCellAt(x, y);
-                if (cell == null) continue;
+                byte cell = grid.GetCellAt(x, y);
+                if (cell == 2) continue;
                 Vector3 cellPosition = grid.CalculateCellPosition(x, y);
                 CellVisualizer cellVisualizer = Instantiate(_cellPrefab, cellPosition, Quaternion.identity, transform);
-                if (cell.isAlive)
+                if (cell == 1)
                 {
                     cellVisualizer.SetCellSprite(_aliveCellSprite);
                 }
@@ -52,20 +56,26 @@ public class GridVisualizer : MonoBehaviour
                 _cellVisualizers[x, y] = cellVisualizer;
             }
         }
+
+        time.Stop();
+        StatsMenuController.Instance.UpdateGridCreateTime(time.ElapsedMilliseconds);
     }
 
     private void UpdateGrid(Grid grid)
     {
         if (_cellVisualizers == null) { CreateGrid(_gridManager.Grid); return; }
 
-        for (int x = 0; x < grid.GridWidth; x++)
+        Stopwatch time = new Stopwatch();
+        time.Start();
+
+        for (int x = 0; x < grid.Width; x++)
         {
-            for (int y = 0; y < grid.GridHeight; y++)
+            for (int y = 0; y < grid.Height; y++)
             {
-                Cell cell = grid.GetCellAt(x, y);
-                if (cell == null) continue;
+                byte cell = grid.GetCellAt(x, y);
+                if (cell == 2) continue;
                 CellVisualizer cellVisualizer = _cellVisualizers[x, y];
-                if (cell.isAlive)
+                if (cell == 1)
                 {
                     cellVisualizer.SetCellSprite(_aliveCellSprite);
                 }
@@ -75,5 +85,8 @@ public class GridVisualizer : MonoBehaviour
                 }
             }
         }
+
+        time.Stop();
+        StatsMenuController.Instance.UpdateGridUpdateTime(time.ElapsedMilliseconds);
     }
 }

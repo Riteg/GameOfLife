@@ -3,72 +3,71 @@ using UnityEngine;
 
 public class Grid
 {
-    private int _gridWidth;
-    private int _gridHeight;
+    private int _width;
+    private int _height;
 
-    private Cell[,] _cells;
+    private byte[] _cells;
 
-    public int GridWidth => _gridWidth;
-    public int GridHeight => _gridHeight;
+    public int Width => _width;
+    public int Height => _height;
+
+    public int PWidth => _width + 2;
+    public int PHeight => _height + 2;
+
+    public byte[] CellPadded => _cells;
 
     public Grid(int gridWidth, int gridHeight, bool populateGrid = false)
     {
-        _gridWidth = gridWidth;
-        _gridHeight = gridHeight;
-        Initialize(_gridWidth, _gridHeight);
+        _width = gridWidth;
+        _height = gridHeight;
+        Initialize(PWidth, PHeight);
         if (populateGrid) RandomlyPopulateGrid();
     }
 
     private void Initialize(int gridWidth, int gridHeight)
     {
-        _cells = new Cell[gridWidth, gridHeight];
-        for (int x = 0; x < gridWidth; x++)
-        {
-            for (int y = 0; y < gridHeight; y++)
-            {
-                _cells[x, y] = new Cell(x, y, false);
-            }
-        }
+        _cells = new byte[gridWidth * gridHeight];
     }
 
     public void RandomlyPopulateGrid(float chance = 0.8f)
     {
         if (_cells == null) return;
 
-        foreach (var cell in _cells)
+        for (int y = 1; y <= Height; y++)
         {
-            cell.isAlive = Random.value > chance;
-        }
-    }
-
-    public void RandomlyPopulateGrid(int maxAliveCount)
-    {
-        if (_cells == null) return;
-
-        var aliveCells = new HashSet<Cell>();
-
-        while (aliveCells.Count < maxAliveCount)
-        {
-            int x = Random.Range(0, _gridWidth);
-            int y = Random.Range(0, _gridHeight);
-            var cell = _cells[x, y];
-            if (!cell.isAlive)
+            for (int x = 1; x <= Width; x++)
             {
-                cell.isAlive = true;
-                aliveCells.Add(cell);
+                _cells[y * PWidth + x] = Random.value > chance ? (byte)1 : (byte)0;
             }
         }
     }
 
-    public Cell[,] GetCells()
+    public byte GetCellAt(int x, int y)
     {
-        return _cells;
+        if (_cells == null) throw new System.Exception("Cells array is not initialized.");
+
+        try
+        {
+            return _cells[(y + 1) * PWidth + (x + 1)];
+        }
+        catch (System.Exception)
+        {
+
+            throw new System.Exception($"[Grid] Index out of bounds (x:{x}, y:{y}, PWidth:{PWidth}): {y * PWidth + x} >= {_cells.Length}");
+        }
+
     }
 
-    public Cell GetCellAt(int x, int y)
+    public void SetCellAt(int x, int y, byte value)
     {
-        if (_cells == null) return null;
+        if (_cells == null) throw new System.Exception("Cells array is not initialized.");
 
-        return _cells[x, y];
+        _cells[(y + 1) * PWidth + (x + 1)] = value;
+    }
+
+    public void SetCellsPadded(byte[] cells)
+    {
+        if (cells.Length != _cells.Length) throw new System.Exception("Input cells array length does not match the grid size.");
+        _cells = cells;
     }
 }
