@@ -31,7 +31,7 @@ public class StatsMenuController : MonoBehaviour
 
     public void UpdateGridUpdateTime(float time)
     {
-        _gridUpdateText.text = $"Grid Update Time: {time} ms";
+        _gridUpdateText.text = $"Grid Update Time: {time} t";
     }
 
     public void UpdateSimulationCalcTime(float time)

@@ -6,6 +6,10 @@ public class Simulation : MonoBehaviour
 {
     [SerializeField] private GridManager _gridManager;
 
+    [Header("Settings")]
+    [SerializeField] private bool _useRollingSimulation = true;
+    [SerializeField] private bool _useForNeighborsFind = false;
+
     private void Awake()
     {
         if (_gridManager == null)
@@ -19,66 +23,25 @@ public class Simulation : MonoBehaviour
     {
         if (TickManager.Instance == null) return;
 
-        TickManager.Instance.OnTick += OnTickNew;
+        TickManager.Instance.OnTick += OnTick;
     }
 
     private void OnDisable()
     {
         if (TickManager.Instance == null) return;
 
-        TickManager.Instance.OnTick -= OnTickNew;
+        TickManager.Instance.OnTick -= OnTick;
     }
 
     private void OnTick()
     {
-        Stopwatch time = new Stopwatch();
-        time.Start();
-
-        var newGrid = new Grid(_gridManager.Grid.Width, _gridManager.Grid.Height);
-
-        for (int x = 0; x < _gridManager.Grid.Width; x++)
-        {
-            for (int y = 0; y < _gridManager.Grid.Height; y++)
-            {
-                byte cell = _gridManager.Grid.GetCellAt(x, y);
-                if (cell == 2) continue;
-                int aliveNeighbors = _gridManager.Grid.GetAliveNeighborsCount(x, y);
-                // Apply Conway's Game of Life rules
-                if (cell == 1)
-                {
-                    // Any live cell with two or three live neighbours survives.
-                    if (aliveNeighbors == 2 || aliveNeighbors == 3)
-                    {
-                        newGrid.SetCellAt(x, y, 1);
-                    }
-                    else
-                    {
-                        // All other live cells die in the next generation. Similarly, all other dead cells stay dead.
-                        newGrid.SetCellAt(x, y, 0);
-                    }
-                }
-                else
-                {
-                    // Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-                    if (aliveNeighbors == 3)
-                    {
-                        newGrid.SetCellAt(x, y, 1);
-                    }
-                    else
-                    {
-                        newGrid.SetCellAt(x, y, 0);
-                    }
-                }
-            }
-        }
-
-        _gridManager.SetGrid(newGrid);
-
-        time.Stop();
-        StatsMenuController.Instance.UpdateSimulationCalcTime(time.ElapsedMilliseconds);
+        if (_useRollingSimulation)
+            RollingSimulation();
+        else
+            ForSimulation();
     }
 
-    private void OnTickNew()
+    private void RollingSimulation()
     {
         Stopwatch time = new Stopwatch();
         time.Start();
@@ -157,6 +120,62 @@ public class Simulation : MonoBehaviour
         StatsMenuController.Instance.UpdateSimulationCalcTime(time.ElapsedMilliseconds);
 
         _gridManager.SetCells(next);
+    }
 
+
+    private void ForSimulation()
+    {
+        Stopwatch time = new Stopwatch();
+        time.Start();
+
+        var newGrid = new Grid(_gridManager.Grid.Width, _gridManager.Grid.Height);
+
+        for (int x = 0; x < _gridManager.Grid.Width; x++)
+        {
+            for (int y = 0; y < _gridManager.Grid.Height; y++)
+            {
+                byte cell = _gridManager.Grid.GetCellAt(x, y);
+                if (cell == 2) continue;
+
+                int aliveNeighbors = 0;
+
+                if (_useForNeighborsFind)
+                    aliveNeighbors = _gridManager.Grid.GetAliveNeighborsCountFor(x, y);
+                else
+                    aliveNeighbors = _gridManager.Grid.GetAliveNeighborsCount(x, y);
+
+                // Apply Conway's Game of Life rules
+                if (cell == 1)
+                {
+                    // Any live cell with two or three live neighbours survives.
+                    if (aliveNeighbors == 2 || aliveNeighbors == 3)
+                    {
+                        newGrid.SetCellAt(x, y, 1);
+                    }
+                    else
+                    {
+                        // All other live cells die in the next generation. Similarly, all other dead cells stay dead.
+                        newGrid.SetCellAt(x, y, 0);
+                    }
+                }
+                else
+                {
+                    // Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
+                    if (aliveNeighbors == 3)
+                    {
+                        newGrid.SetCellAt(x, y, 1);
+                    }
+                    else
+                    {
+                        newGrid.SetCellAt(x, y, 0);
+                    }
+                }
+            }
+        }
+
+        time.Stop();
+        StatsMenuController.Instance.UpdateSimulationCalcTime(time.ElapsedMilliseconds);
+
+        _gridManager.SetGrid(newGrid);
     }
 }
