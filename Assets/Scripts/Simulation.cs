@@ -10,6 +10,9 @@ public class Simulation : MonoBehaviour
     [SerializeField] private bool _useRollingSimulation = true;
     [SerializeField] private bool _useForNeighborsFind = false;
 
+    private bool _simulationRunning = false;
+
+
     private void Awake()
     {
         if (_gridManager == null)
@@ -17,13 +20,8 @@ public class Simulation : MonoBehaviour
             UnityEngine.Debug.LogError("GridManager reference is missing in Simulation script.");
             return;
         }
-    }
 
-    private void OnEnable()
-    {
-        if (TickManager.Instance == null) return;
-
-        TickManager.Instance.OnTick += OnTick;
+        _gridManager.Init();
     }
 
     private void OnDisable()
@@ -177,5 +175,19 @@ public class Simulation : MonoBehaviour
         StatsMenuController.Instance.UpdateSimulationCalcTime(time.ElapsedMilliseconds);
 
         _gridManager.SetGrid(newGrid);
+    }
+
+    public void StartSimulation()
+    {
+        if (_simulationRunning) return;
+        TickManager.Instance.OnTick += OnTick;
+        _simulationRunning = true;
+    }
+
+    public void StopSimulation()
+    {
+        if (!_simulationRunning) return;
+        TickManager.Instance.OnTick -= OnTick;
+        _simulationRunning = false;
     }
 }

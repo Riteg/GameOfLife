@@ -44,75 +44,6 @@ public class Grid
         }
     }
 
-    public void StartWitBorder(int size)
-    {
-        int pWidth = PWidth;
-        if (_cells == null) return;
-
-        // Ortadaki kareyi bulmak için baþlangýç noktasý
-        int startX = (Width / 2) - (size / 2);
-        int startY = (Height / 2) - (size / 2);
-
-        for (int y = 0; y < Height + 2; y++)
-        {
-            for (int x = 0; x < Width + 2; x++)
-            {
-                // Kare sýnýrlarý içinde mi?
-                if (x >= startX && x < startX + size &&
-                    y >= startY && y < startY + size)
-                {
-                    _cells[y * pWidth + x] = 1;
-                }
-                else
-                {
-                    _cells[y * pWidth + x] = 0;
-                }
-            }
-        }
-    }
-
-    public void StartWithSquare(int size)
-    {
-        if (_cells == null || size <= 0) return;
-
-        int pWidth = PWidth;
-
-        // 1) Ýç alaný (padding hariç) temizle
-        for (int y = 1; y <= Height; y++)
-        {
-            for (int x = 1; x <= Width; x++)
-            {
-                _cells[y * pWidth + x] = (byte)0;
-            }
-        }
-
-        // 2) Merkez ve kare sýnýrlarýný hesapla
-        int cx = (Width + 1) / 2;   // iç koordinatta merkez hücre
-        int cy = (Height + 1) / 2;
-
-        int half = size / 2;
-        int startX = cx - half;
-        int startY = cy - half;
-        int endX = startX + size - 1;
-        int endY = startY + size - 1;
-
-        // 3) Ýç alana (1..Width, 1..Height) clamp et
-        if (startX < 1) startX = 1;
-        if (startY < 1) startY = 1;
-        if (endX > Width) endX = Width;
-        if (endY > Height) endY = Height;
-
-        // 4) Karemizi dolu þekilde yaz
-        for (int y = startY; y <= endY; y++)
-        {
-            for (int x = startX; x <= endX; x++)
-            {
-                _cells[y * pWidth + x] = (byte)1;
-            }
-        }
-    }
-
-
     public byte GetCellAt(int x, int y)
     {
         if (_cells == null) throw new System.Exception("Cells array is not initialized.");
@@ -140,6 +71,27 @@ public class Grid
     {
         if (cells.Length != _cells.Length) throw new System.Exception("Input cells array length does not match the grid size.");
         _cells = cells;
+    }
+
+    public enum StartPattern
+    {
+        Square = 0,
+        Circle = 1,
+        Plus = 2,
+        Cross = 3,
+        Border = 4,
+        Checkerboard = 5,
+        RandomNoise = 6,
+        PerlinIslands = 7,
+        RoomsAndCorridors = 8,
+        HallowSquare = 9,
+        Diagonal = 10,
+        SymmetricHalf = 11,
+        CircleRingGrid = 12,
+        RadialSpokes = 13,
+        Stripe = 14,
+        Square_Alt = 15,
+        Circle_Alt = 16,
     }
 
     #region StartPatterns
