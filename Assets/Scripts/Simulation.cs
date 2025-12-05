@@ -10,6 +10,10 @@ public class Simulation : MonoBehaviour
     [SerializeField] private bool _useRollingSimulation = true;
     [SerializeField] private bool _useForNeighborsFind = false;
 
+    private const byte CellDead = 0;
+    private const byte CellAlive = 1;
+    private const byte CellBlocked = 2;
+
     private bool _simulationRunning = false;
 
 
@@ -34,147 +38,123 @@ public class Simulation : MonoBehaviour
     private void OnTick()
     {
         if (_useRollingSimulation)
+        {
             RollingSimulation();
+        }
         else
+        {
             ForSimulation();
+        }
     }
 
     private void RollingSimulation()
     {
-        Stopwatch time = new Stopwatch();
-        time.Start();
+        var timer = Stopwatch.StartNew();
 
-        int W = _gridManager.Grid.Width;
-        int H = _gridManager.Grid.Height;
-
-        int PW = W + 2;
-        int PH = H + 2;
+        int width = _gridManager.Grid.Width;
+        int height = _gridManager.Grid.Height;
+        int paddedWidth = width + 2;
 
         byte[] current = _gridManager.Grid.CellPadded;
-        byte[] next = new byte[PW * PH];
+        byte[] next = new byte[paddedWidth * (height + 2)];
+        byte[] horizontalSums = new byte[next.Length];
 
-        byte[] Hsum = new byte[PW * PH];
+        ComputeHorizontalSums(width, height, paddedWidth, current, horizontalSums);
+        ApplyRulesWithVerticalSums(width, height, paddedWidth, current, horizontalSums, next);
 
-
-        // Horizontal sum
-        for (int y = 1; y <= H; y++)
-        {
-            int row = y * PW;
-
-            int i = row + 1;
-            int sum = current[i - 1] + current[i] + current[i + 1];
-            Hsum[i] = (byte)sum;
-
-            for (int x = 2; x <= W; x++)
-            {
-                i++;
-                sum += current[i + 1]
-                    - current[i - 2];
-                Hsum[i] = (byte)sum;
-            }
-        }
-
-        // Vertical sum and apply rules
-        for (int x = 1; x <= W; x++)
-        {
-            int iTop = (0 * PW) + x;
-            int iMid = (1 * PW) + x;
-            int iBottom = (2 * PW) + x;
-            int sum = Hsum[iTop] + Hsum[iMid] + Hsum[iBottom];
-
-            for (int y = 1; y <= H; y++)
-            {
-                int i = y * PW + x;
-
-                int neighbors = sum - current[i];
-
-                byte cell = current[i];
-                byte outVal;
-
-                if (cell == 2)
-                {
-                    outVal = 2;
-                }
-                else if (cell == 1)
-                {
-                    outVal = (neighbors == 2 || neighbors == 3) ? (byte)1 : (byte)0;
-                }
-                else
-                {
-                    outVal = (neighbors == 3) ? (byte)1 : (byte)0;
-                }
-
-                next[i] = outVal;
-
-                if (y < H)
-                {
-                    int iOldTop = (y - 1) * PW + x;
-                    int iNewBottom = (y + 2) * PW + x;
-                    sum += Hsum[iNewBottom] - Hsum[iOldTop];
-                }
-            }
-        }
-        time.Stop();
-        StatsMenuController.Instance.UpdateSimulationCalcTime(time.ElapsedMilliseconds);
+        timer.Stop();
+        StatsMenuController.Instance.UpdateSimulationCalcTime(timer.ElapsedMilliseconds);
 
         _gridManager.SetCells(next);
+    }
+
+    private static void ComputeHorizontalSums(int width, int height, int paddedWidth, byte[] current, byte[] horizontalSums)
+    {
+        for (int y = 1; y <= height; y++)
+        {
+            int rowStart = y * paddedWidth;
+
+            int index = rowStart + 1;
+            int sum = current[index - 1] + current[index] + current[index + 1];
+            horizontalSums[index] = (byte)sum;
+
+            for (int x = 2; x <= width; x++)
+            {
+                index++;
+                sum += current[index + 1] - current[index - 2]; // slide window
+                horizontalSums[index] = (byte)sum;
+            }
+        }
+    }
+
+    private static void ApplyRulesWithVerticalSums(int width, int height, int paddedWidth, byte[] current, byte[] horizontalSums, byte[] output)
+    {
+        for (int x = 1; x <= width; x++)
+        {
+            int sum = horizontalSums[x]
+                + horizontalSums[paddedWidth + x]
+                + horizontalSums[(2 * paddedWidth) + x];
+
+            for (int y = 1; y <= height; y++)
+            {
+                int index = (y * paddedWidth) + x;
+                int neighbors = sum - current[index];
+
+                output[index] = NextCellState(current[index], neighbors);
+
+                if (y < height)
+                {
+                    int oldTop = ((y - 1) * paddedWidth) + x;
+                    int newBottom = ((y + 2) * paddedWidth) + x;
+                    sum += horizontalSums[newBottom] - horizontalSums[oldTop]; // slide window
+                }
+            }
+        }
+    }
+
+    private static byte NextCellState(byte cell, int neighbors)
+    {
+        if (cell == CellBlocked) return CellBlocked;
+        if (cell == CellAlive) return (neighbors == 2 || neighbors == 3) ? CellAlive : CellDead;
+        return neighbors == 3 ? CellAlive : CellDead;
     }
 
 
     private void ForSimulation()
     {
-        Stopwatch time = new Stopwatch();
-        time.Start();
+        var timer = Stopwatch.StartNew();
 
-        var newGrid = new Grid(_gridManager.Grid.Width, _gridManager.Grid.Height);
+        Grid grid = _gridManager.Grid;
+        int width = grid.Width;
+        int height = grid.Height;
 
-        for (int x = 0; x < _gridManager.Grid.Width; x++)
+        var newGrid = new Grid(width, height);
+
+        for (int x = 0; x < width; x++)
         {
-            for (int y = 0; y < _gridManager.Grid.Height; y++)
+            for (int y = 0; y < height; y++)
             {
-                byte cell = _gridManager.Grid.GetCellAt(x, y);
-                if (cell == 2) continue;
+                byte cell = grid.GetCellAt(x, y);
+                if (cell == CellBlocked) continue;
 
-                int aliveNeighbors = 0;
+                int aliveNeighbors = GetAliveNeighbors(grid, x, y);
+                byte nextState = NextCellState(cell, aliveNeighbors);
 
-                if (_useForNeighborsFind)
-                    aliveNeighbors = _gridManager.Grid.GetAliveNeighborsCountFor(x, y);
-                else
-                    aliveNeighbors = _gridManager.Grid.GetAliveNeighborsCount(x, y);
-
-                // Apply Conway's Game of Life rules
-                if (cell == 1)
-                {
-                    // Any live cell with two or three live neighbours survives.
-                    if (aliveNeighbors == 2 || aliveNeighbors == 3)
-                    {
-                        newGrid.SetCellAt(x, y, 1);
-                    }
-                    else
-                    {
-                        // All other live cells die in the next generation. Similarly, all other dead cells stay dead.
-                        newGrid.SetCellAt(x, y, 0);
-                    }
-                }
-                else
-                {
-                    // Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-                    if (aliveNeighbors == 3)
-                    {
-                        newGrid.SetCellAt(x, y, 1);
-                    }
-                    else
-                    {
-                        newGrid.SetCellAt(x, y, 0);
-                    }
-                }
+                newGrid.SetCellAt(x, y, nextState);
             }
         }
 
-        time.Stop();
-        StatsMenuController.Instance.UpdateSimulationCalcTime(time.ElapsedMilliseconds);
+        timer.Stop();
+        StatsMenuController.Instance.UpdateSimulationCalcTime(timer.ElapsedMilliseconds);
 
         _gridManager.SetGrid(newGrid);
+    }
+
+    private int GetAliveNeighbors(Grid grid, int x, int y)
+    {
+        return _useForNeighborsFind
+            ? grid.GetAliveNeighborsCountFor(x, y)
+            : grid.GetAliveNeighborsCount(x, y);
     }
 
     public void StartSimulation()

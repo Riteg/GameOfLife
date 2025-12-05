@@ -7,6 +7,9 @@ public class Grid
     private int _width;
     private int _height;
 
+    public const byte Alive = 1;
+    public const byte Dead = 0;
+
     private byte[] _cells;
 
     public int Width => _width;
@@ -16,6 +19,9 @@ public class Grid
     public int PHeight => _height + 2;
 
     public byte[] CellPadded => _cells;
+
+    private int CenterX => (Width + 1) / 2;
+    private int CenterY => (Height + 1) / 2;
 
     public Grid(int gridWidth, int gridHeight, bool populateGrid = false)
     {
@@ -30,47 +36,77 @@ public class Grid
         _cells = new byte[gridWidth * gridHeight];
     }
 
-    public void RandomlyPopulateGrid(float chance = 0.2f)
+    private void EnsureCellsAllocated()
     {
-        int pWidth = PWidth;
-        if (_cells == null) return;
+        if (_cells == null) throw new InvalidOperationException("Cells array is not initialized.");
+    }
 
+    private void ValidateInteriorCoordinate(int x, int y)
+    {
+        if (x < 0 || x >= Width) throw new ArgumentOutOfRangeException(nameof(x), $"X coordinate {x} is outside interior width {Width}.");
+        if (y < 0 || y >= Height) throw new ArgumentOutOfRangeException(nameof(y), $"Y coordinate {y} is outside interior height {Height}.");
+    }
+
+    private int ToPaddedIndex(int x, int y) => (y + 1) * PWidth + (x + 1);
+
+    private void ClearInterior(byte value)
+    {
+        EnsureCellsAllocated();
+        int pWidth = PWidth;
         for (int y = 1; y <= Height; y++)
         {
-            for (int x = 1; x <= Width; x++)
-            {
-                _cells[y * pWidth + x] = UnityEngine.Random.value < chance ? (byte)1 : (byte)0;
-            }
+            int row = y * pWidth;
+            for (int x = 1; x <= Width; x++) _cells[row + x] = value;
         }
+    }
+
+    private void ClearIfRequested(bool clearFirst, byte emptyValue)
+    {
+        if (clearFirst) ClearInterior(emptyValue);
+    }
+
+    private void ForEachInteriorCell(Action<int, int, int> action)
+    {
+        int pWidth = PWidth;
+        for (int y = 1; y <= Height; y++)
+        {
+            int row = y * pWidth;
+            for (int x = 1; x <= Width; x++) action(x, y, row + x);
+        }
+    }
+
+    private static double NextRandom01(System.Random rng) => rng?.NextDouble() ?? UnityEngine.Random.value;
+
+    public void RandomlyPopulateGrid(float chance = 0.2f, System.Random rng = null, byte aliveValue = Alive, byte deadValue = Dead)
+    {
+        EnsureCellsAllocated();
+
+        ForEachInteriorCell((x, y, idx) =>
+        {
+            _cells[idx] = NextRandom01(rng) < chance ? aliveValue : deadValue;
+        });
     }
 
     public byte GetCellAt(int x, int y)
     {
-        if (_cells == null) throw new System.Exception("Cells array is not initialized.");
-
-        try
-        {
-            return _cells[(y + 1) * PWidth + (x + 1)];
-        }
-        catch (System.Exception)
-        {
-
-            throw new System.Exception($"[Grid] Index out of bounds (x:{x}, y:{y}, PWidth:{PWidth}): {y * PWidth + x} >= {_cells.Length}");
-        }
-
+        EnsureCellsAllocated();
+        ValidateInteriorCoordinate(x, y);
+        return _cells[ToPaddedIndex(x, y)];
     }
 
     public void SetCellAt(int x, int y, byte value)
     {
-        if (_cells == null) throw new System.Exception("Cells array is not initialized.");
-
-        _cells[(y + 1) * PWidth + (x + 1)] = value;
+        EnsureCellsAllocated();
+        ValidateInteriorCoordinate(x, y);
+        _cells[ToPaddedIndex(x, y)] = value;
     }
 
     public void SetCellsPadded(byte[] cells)
     {
-        if (cells.Length != _cells.Length) throw new System.Exception("Input cells array length does not match the grid size.");
-        _cells = cells;
+        EnsureCellsAllocated();
+        if (cells == null) throw new ArgumentNullException(nameof(cells));
+        if (cells.Length != _cells.Length) throw new ArgumentException("Input cells array length does not match the grid size.", nameof(cells));
+        _cells = (byte[])cells.Clone();
     }
 
     public enum StartPattern
@@ -98,44 +134,18 @@ public class Grid
 
     #region Square
     /// <summary>
-    /// Merkeze kare (dolu veya boþluklu çerçeve) yerleþtirir.
+    /// Draws a centered square; supports hollow outlines.
     /// </summary>
-    /// <param name="size">Karenin kenar uzunluðu (iç ýzgara koordinatlarýyla).</param>
-    /// <param name="clearFirst">true ise önce tüm iç alaný <paramref name="emptyValue"/> ile temizler.</param>
-    /// <param name="fillValue">Dolu hücre deðeri.</param>
-    /// <param name="emptyValue">Boþ hücre deðeri.</param>
-    /// <param name="hollow">true ise sadece çerçeve çizer.</param>
-    /// <param name="thickness">Çerçeve/çizgi kalýnlýðý (>=1).</param>
-    /// <remarks>
-    /// Merkez: ((Width + 1)/2, (Height + 1)/2)
-    /// </remarks>
-    /// <example>
-    /// // 9x9'luk merkez kare (dolu)
-    /// StartWithSquare(9);
-    /// // 12'lik hollow kare, kalýnlýk 2
-    /// StartWithSquare(12, true, 1, 0, true, 2);
-    /// // Temizlemeden üstüne yaz
-    /// StartWithSquare(5, false);
-    /// // Farklý dolu/boþ deðerleri
-    /// StartWithSquare(7, true, 2, 0);
-    /// </example>
-    public void StartWithSquare(int size, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0, bool hollow = false, int thickness = 1)
+    public void StartWithSquare(int size, bool clearFirst = true, byte fillValue = Alive, byte emptyValue = Dead, bool hollow = false, int thickness = 1)
     {
-        if (_cells == null) return;
+        EnsureCellsAllocated();
         if (size <= 0) return;
         if (thickness < 1) thickness = 1;
 
-        int cx = (Width + 1) / 2;
-        int cy = (Height + 1) / 2;
+        int cx = CenterX;
+        int cy = CenterY;
 
-        if (clearFirst)
-        {
-            for (int y = 1; y <= Height; y++)
-            {
-                int row = y * PWidth;
-                for (int x = 1; x <= Width; x++) _cells[row + x] = emptyValue;
-            }
-        }
+        ClearIfRequested(clearFirst, emptyValue);
 
         int half = size / 2;
         int x0 = Math.Max(1, cx - half);
@@ -153,7 +163,7 @@ public class Grid
         }
         else
         {
-            // Üst ve alt kenarlar
+            // Top and bottom edges
             for (int t = 0; t < thickness; t++)
             {
                 int yt = Math.Min(y0 + t, y1);
@@ -166,7 +176,7 @@ public class Grid
                     _cells[rowB + x] = fillValue;
                 }
             }
-            // Sol ve sað kenarlar
+            // Left and right edges
             for (int t = 0; t < thickness; t++)
             {
                 int xl = Math.Min(x0 + t, x1);
@@ -184,24 +194,14 @@ public class Grid
 
     #region Circle
     /// <summary>
-    /// Merkezde yarýçapý verilen dolu disk veya boþluklu çember çizer (Öklid mesafe).
+    /// Draws a filled circle or hollow ring at the center.
     /// </summary>
-    /// <param name="radius">Yarýçap (hücre cinsinden, >=1).</param>
-    /// <param name="clearFirst">true ise önce tüm iç alaný temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <param name="hollow">true ise sadece halka (çember kalýnlýðý ile) çizer.</param>
-    /// <param name="thickness">Halka kalýnlýðý (>=1).</param>
-    /// <example>
-    /// // Dolu disk
-    /// StartWithCircle(6);
-    /// // Hollow çember, kalýnlýk 2
-    /// StartWithCircle(8, true, 1, 0, true, 2);
-    /// // Temizlemeden üstüne yaz
-    /// StartWithCircle(5, false);
-    /// // Farklý deðerlerle
-    /// StartWithCircle(7, true, 2, 0);
-    /// </example>
+    /// <param name="radius">Radius in cells (>=1).</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
+    /// <param name="hollow">When true, draws only the ring.</param>
+    /// <param name="thickness">Ring thickness in cells.</param>
     public void StartWithCircle(int radius, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0, bool hollow = false, int thickness = 1)
     {
         if (_cells == null) return;
@@ -248,22 +248,12 @@ public class Grid
 
     #region plus
     /// <summary>
-    /// Merkezden geçen artý (+) þekli çizer (dikey + yatay þerit).
+    /// Draws a centered plus sign using vertical and horizontal bars.
     /// </summary>
-    /// <param name="thickness">Kol kalýnlýðý (>=1).</param>
-    /// <param name="clearFirst">true ise önce temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Ýnce artý
-    /// StartWithPlus();
-    /// // Kalýn artý
-    /// StartWithPlus(3);
-    /// // Üstüne yaz
-    /// StartWithPlus(2, false);
-    /// // Farklý deðerler
-    /// StartWithPlus(2, true, 2, 0);
-    /// </example>
+    /// <param name="thickness">Bar thickness in cells.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithPlus(int thickness = 1, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -287,13 +277,13 @@ public class Grid
         int y0 = Math.Max(1, cy - half);
         int y1 = Math.Min(Height, cy + (thickness - 1 - half));
 
-        // Dikey kol
+        // Vertical bar
         for (int y = 1; y <= Height; y++)
         {
             int row = y * PWidth;
             for (int x = x0; x <= x1; x++) _cells[row + x] = fillValue;
         }
-        // Yatay kol
+        // Horizontal bar
         for (int y = y0; y <= y1; y++)
         {
             int row = y * PWidth;
@@ -305,22 +295,12 @@ public class Grid
 
     #region Cross
     /// <summary>
-    /// Merkezden geçen iki diyagonal (X) çizer. Kalýnlýk destekli.
+    /// Draws a centered X using diagonals.
     /// </summary>
-    /// <param name="thickness">Çizgi kalýnlýðý (>=1).</param>
-    /// <param name="clearFirst">true ise önce temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Ýnce X
-    /// StartWithCross();
-    /// // Kalýn X
-    /// StartWithCross(3);
-    /// // Üstüne yaz
-    /// StartWithCross(2, false);
-    /// // Farklý deðerler
-    /// StartWithCross(2, true, 2, 0);
-    /// </example>
+    /// <param name="thickness">Line thickness in cells.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithCross(int thickness = 1, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -355,22 +335,12 @@ public class Grid
 
     #region Border
     /// <summary>
-    /// Ýç alan kenarlarý boyunca çerçeve çizer (kalýnlýk destekli).
+    /// Draws a border along interior edges.
     /// </summary>
-    /// <param name="thickness">Çerçeve kalýnlýðý (>=1).</param>
-    /// <param name="clearFirst">true ise önce temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Ýnce kenarlýk
-    /// StartWithBorder();
-    /// // Kalýn kenarlýk
-    /// StartWithBorder(3);
-    /// // Üstüne yaz
-    /// StartWithBorder(2, false);
-    /// // Farklý deðerler
-    /// StartWithBorder(2, true, 2, 0);
-    /// </example>
+    /// <param name="thickness">Border thickness in cells.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithBorder(int thickness = 1, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -403,24 +373,14 @@ public class Grid
 
     #region Checkerboard
     /// <summary>
-    /// Satranç tahtasý (checkerboard) deseni çizer. Hücre boyutu ve ofset destekli.
+    /// Draws a checkerboard pattern with optional block size/offset.
     /// </summary>
-    /// <param name="cellSize">Bir kare bloðun boyutu (>=1).</param>
-    /// <param name="offsetX">X yönünde blok ofseti.</param>
-    /// <param name="offsetY">Y yönünde blok ofseti.</param>
-    /// <param name="clearFirst">true ise önce temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // 1x1 standart
-    /// StartWithCheckerboard();
-    /// // 2x2 bloklu checker
-    /// StartWithCheckerboard(2);
-    /// // Ofsetli
-    /// StartWithCheckerboard(2, 1, 1);
-    /// // Üstüne yaz ve farklý deðerler
-    /// StartWithCheckerboard(3, 0, 0, false, 2, 0);
-    /// </example>
+    /// <param name="cellSize">Block size for each square.</param>
+    /// <param name="offsetX">Horizontal block offset.</param>
+    /// <param name="offsetY">Vertical block offset.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithCheckerboard(int cellSize = 1, int offsetX = 0, int offsetY = 0, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -451,95 +411,50 @@ public class Grid
 
     #region RandomNoise
     /// <summary>
-    /// Olasýlýða göre rastgele doldurma (deterministik tohum opsiyonu ile).
+    /// Randomly fills cells using a probability.
     /// </summary>
-    /// <param name="chance">[0..1] arasý doluluk olasýlýðý.</param>
-    /// <param name="seed">Deterministik sonuç için tohum. null ise nondeterministik.</param>
-    /// <param name="clearFirst">true ise önce temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // %20 doluluk
-    /// StartWithRandomNoise(0.2f);
-    /// // Deterministik
-    /// StartWithRandomNoise(0.35f, 12345);
-    /// // Üstüne yaz
-    /// StartWithRandomNoise(0.5f, null, false);
-    /// // Farklý deðerler
-    /// StartWithRandomNoise(0.6f, 42, true, 2, 0);
-    /// </example>
-    public void StartWithRandomNoise(float chance = 0.2f, int? seed = null, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
+    public void StartWithRandomNoise(float chance = 0.2f, int? seed = null, bool clearFirst = true, byte fillValue = Alive, byte emptyValue = Dead, System.Random rng = null)
     {
-        if (_cells == null) return;
+        EnsureCellsAllocated();
         if (chance <= 0f && clearFirst)
-        { // her þeyi boþalt
-            for (int y = 1; y <= Height; y++)
-            {
-                int row = y * PWidth;
-                for (int x = 1; x <= Width; x++) _cells[row + x] = emptyValue;
-            }
+        {
+            ClearInterior(emptyValue);
             return;
         }
         if (chance >= 1f && clearFirst)
-        { // her þeyi doldur
-            for (int y = 1; y <= Height; y++)
-            {
-                int row = y * PWidth;
-                for (int x = 1; x <= Width; x++) _cells[row + x] = fillValue;
-            }
+        {
+            ClearInterior(fillValue);
             return;
         }
 
-        System.Random rnd = seed.HasValue ? new System.Random(seed.Value) : null;
+        System.Random rnd = seed.HasValue ? new System.Random(seed.Value) : rng;
 
-        if (clearFirst)
-        {
-            for (int y = 1; y <= Height; y++)
-            {
-                int row = y * PWidth;
-                for (int x = 1; x <= Width; x++) _cells[row + x] = emptyValue;
-            }
-        }
+        ClearIfRequested(clearFirst, emptyValue);
 
-        for (int y = 1; y <= Height; y++)
+        ForEachInteriorCell((x, y, idx) =>
         {
-            int row = y * PWidth;
-            for (int x = 1; x <= Width; x++)
-            {
-                double r = rnd != null ? rnd.NextDouble() : UnityEngine.Random.value;
-                if (r < chance) _cells[row + x] = fillValue;
-            }
-        }
+            if (NextRandom01(rnd) < chance) _cells[idx] = fillValue;
+        });
     }
 
     #endregion
 
     #region PerlinIslands
     /// <summary>
-    /// Basit 2D value-noise ile ada/maðara benzeri desen oluþturur (threshold ile).
+    /// Generates island- or cave-like noise using value noise.
     /// </summary>
-    /// <param name="scale">Gürültü ölçeði (daha küçük = daha büyük adalar).</param>
-    /// <param name="threshold">[0..1] eþik; üstü dolu kabul edilir.</param>
-    /// <param name="seed">Deterministik tohum (null ise nondeterministik).</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Orta yoðunluk
-    /// StartWithPerlinIslands(0.1f, 0.5f);
-    /// // Daha pürüzlü ve deterministik
-    /// StartWithPerlinIslands(0.2f, 0.45f, 1234);
-    /// // Üstüne yazma
-    /// StartWithPerlinIslands(0.08f, 0.55f, null, false);
-    /// // Farklý deðerler
-    /// StartWithPerlinIslands(0.12f, 0.4f, 7, true, 2, 0);
-    /// </example>
-    public void StartWithPerlinIslands(float scale = 0.1f, float threshold = 0.5f, int? seed = null, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
+    /// <param name="scale">Noise scale (smaller values produce larger islands).</param>
+    /// <param name="threshold">Fill threshold in [0..1].</param>
+    /// <param name="seed">Optional deterministic seed.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
+    public void StartWithPerlinIslands(float scale = 0.1f, float threshold = 0.5f, int? seed = null, bool clearFirst = true, byte fillValue = Alive, byte emptyValue = Dead, System.Random rng = null)
     {
         if (_cells == null) return;
         if (scale <= 0f) scale = 0.0001f;
 
-        int baseSeed = seed ?? UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+        int baseSeed = seed ?? (rng != null ? rng.Next(int.MinValue, int.MaxValue) : UnityEngine.Random.Range(int.MinValue, int.MaxValue));
 
         if (clearFirst)
         {
@@ -566,7 +481,7 @@ public class Grid
         }
         float Val(int xi, int yi)
         {
-            // [0,1] aralýðýna getir
+            // Convert to [0,1] range
             uint u = (uint)Hash(xi, yi);
             return (u / (float)uint.MaxValue);
         }
@@ -587,7 +502,7 @@ public class Grid
                 float tx = fx - x0;
                 float sx = Smooth(tx);
 
-                // Köþe deðerleri
+                // Corner values
                 float v00 = Val(x0, y0);
                 float v10 = Val(x0 + 1, y0);
                 float v01 = Val(x0, y0 + 1);
@@ -607,27 +522,17 @@ public class Grid
 
     #region RoomsAndCorridors
     /// <summary>
-    /// Rastgele dikdörtgen odalar ve bunlarý baðlayan koridorlar üretir (basit MST ile baðlar).
+    /// Places random rooms and connects them with corridors.
     /// </summary>
-    /// <param name="roomCount">Oda sayýsý.</param>
-    /// <param name="minRoomSize">Min oda kenarý (>=2 önerilir).</param>
-    /// <param name="maxRoomSize">Max oda kenarý (>=minRoomSize).</param>
-    /// <param name="corridorWidth">Koridor geniþliði (>=1).</param>
-    /// <param name="seed">Deterministik tohum.</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // 4 oda
-    /// StartWithRoomsAndCorridors();
-    /// // Daha fazla ve geniþ odalar
-    /// StartWithRoomsAndCorridors(8, 4, 9, 2);
-    /// // Deterministik
-    /// StartWithRoomsAndCorridors(6, 3, 7, 1, 1234);
-    /// // Üstüne yazma
-    /// StartWithRoomsAndCorridors(5, 3, 6, 1, null, false);
-    /// </example>
-    public void StartWithRoomsAndCorridors(int roomCount = 4, int minRoomSize = 3, int maxRoomSize = 7, int corridorWidth = 1, int? seed = null, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
+    /// <param name="roomCount">How many rooms to place.</param>
+    /// <param name="minRoomSize">Minimum room side length.</param>
+    /// <param name="maxRoomSize">Maximum room side length.</param>
+    /// <param name="corridorWidth">Corridor thickness in cells.</param>
+    /// <param name="seed">Optional deterministic seed.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
+    public void StartWithRoomsAndCorridors(int roomCount = 4, int minRoomSize = 3, int maxRoomSize = 7, int corridorWidth = 1, int? seed = null, bool clearFirst = true, byte fillValue = Alive, byte emptyValue = Dead, System.Random rng = null)
     {
         if (_cells == null) return;
         if (roomCount < 1) roomCount = 1;
@@ -635,7 +540,7 @@ public class Grid
         if (maxRoomSize < minRoomSize) maxRoomSize = minRoomSize;
         if (corridorWidth < 1) corridorWidth = 1;
 
-        System.Random rnd = seed.HasValue ? new System.Random(seed.Value) : new System.Random();
+        System.Random rnd = seed.HasValue ? new System.Random(seed.Value) : (rng ?? new System.Random());
 
         if (clearFirst)
         {
@@ -649,7 +554,7 @@ public class Grid
         var centers = new System.Collections.Generic.List<(int x, int y)>();
         var rooms = new System.Collections.Generic.List<(int x0, int y0, int x1, int y1)>();
 
-        // Odalarý yerleþtir
+        // OdalarÃ½ yerleÃ¾tir
         for (int i = 0; i < roomCount; i++)
         {
             int w = rnd.Next(minRoomSize, maxRoomSize + 1);
@@ -674,7 +579,7 @@ public class Grid
 
         if (centers.Count <= 1) return;
 
-        // Prim ile basit MST (merkezler arasý)
+        // Prim ile basit MST (merkezler arasÃ½)
         int n = centers.Count;
         var inTree = new bool[n];
         var dist = new int[n];
@@ -700,7 +605,7 @@ public class Grid
             }
         }
 
-        // Koridorlarý çiz (L-þekli: önce X sonra Y)
+        // Draw corridors in an L shape: horizontal then vertical
         void DrawCorridor(int xA, int yA, int xB, int yB)
         {
             int x0 = Math.Max(1, Math.Min(xA, xB));
@@ -708,7 +613,7 @@ public class Grid
             int y0 = Math.Max(1, Math.Min(yA, yB));
             int y1 = Math.Min(Height, Math.Max(yA, yB));
 
-            // X yönü
+            // Horizontal section
             int yMid0 = Math.Max(1, yA - (corridorWidth - 1) / 2);
             int yMid1 = Math.Min(Height, yA + (corridorWidth - 1) / 2);
             for (int y = yMid0; y <= yMid1; y++)
@@ -717,7 +622,7 @@ public class Grid
                 for (int x = x0; x <= x1; x++) _cells[row + x] = fillValue;
             }
 
-            // Y yönü
+            // Vertical section
             int xMid0 = Math.Max(1, xB - (corridorWidth - 1) / 2);
             int xMid1 = Math.Min(Width, xB + (corridorWidth - 1) / 2);
             int yStart = Math.Min(yA, yB);
@@ -745,23 +650,13 @@ public class Grid
 
     #region HollowSquare
     /// <summary>
-    /// Sadece kare çerçeve çizer (StartWithSquare'ýn kýsa yolu).
+    /// Draws only the outline of a square.
     /// </summary>
-    /// <param name="size">Karenin kenarý.</param>
-    /// <param name="thickness">Çerçeve kalýnlýðý (>=1).</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Hollow kare
-    /// StartWithHollowSquare(9);
-    /// // Kalýn çerçeve
-    /// StartWithHollowSquare(12, 2);
-    /// // Üstüne yaz
-    /// StartWithHollowSquare(6, 1, false);
-    /// // Farklý deðerler
-    /// StartWithHollowSquare(7, 3, true, 2, 0);
-    /// </example>
+    /// <param name="size">Square side length.</param>
+    /// <param name="thickness">Border thickness in cells.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithHollowSquare(int size, int thickness = 1, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         StartWithSquare(size, clearFirst, fillValue, emptyValue, true, thickness);
@@ -770,23 +665,13 @@ public class Grid
 
     #region Diagonal
     /// <summary>
-    /// Ana (sol-üstten sað-alt) veya yan (sað-üstten sol-alt) diyagonal çizer.
+    /// Draws either the main or counter diagonal.
     /// </summary>
-    /// <param name="mainDiagonal">true: ana diagonal, false: yan diagonal.</param>
-    /// <param name="thickness">Çizgi kalýnlýðý (>=1).</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Ana diagonal
-    /// StartWithDiagonal(true);
-    /// // Yan diagonal kalýn
-    /// StartWithDiagonal(false, 3);
-    /// // Üstüne yaz
-    /// StartWithDiagonal(true, 2, false);
-    /// // Farklý deðerler
-    /// StartWithDiagonal(true, 2, true, 2, 0);
-    /// </example>
+    /// <param name="mainDiagonal">True for main diagonal, false for counter diagonal.</param>
+    /// <param name="thickness">Line thickness in cells.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithDiagonal(bool mainDiagonal = true, int thickness = 1, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -822,27 +707,17 @@ public class Grid
 
     #region SymmetricHalf
     /// <summary>
-    /// Yarým alaný rastgele üretip simetri uygular. 'H': yukarý-aþaðý, 'V': sol-sað, 'Q': dörtlü simetri.
+    /// Generates part of the grid and mirrors it across an axis.
     /// </summary>
-    /// <param name="axis">'H', 'V' veya 'Q'.</param>
-    /// <param name="seed">Deterministik tohum.</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Dikey simetri (sol üretilir, saða ayna)
-    /// StartWithSymmetricHalf('V');
-    /// // Yatay simetri (üst üretilir, alta ayna)
-    /// StartWithSymmetricHalf('H', 1234);
-    /// // Dörtlü simetri
-    /// StartWithSymmetricHalf('Q', null, true, 1, 0);
-    /// // Üstüne yaz
-    /// StartWithSymmetricHalf('V', null, false);
-    /// </example>
-    public void StartWithSymmetricHalf(char axis = 'H', int? seed = null, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
+    /// <param name="axis">'H', 'V', or 'Q' to pick the mirror axis.</param>
+    /// <param name="seed">Optional deterministic seed.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
+    public void StartWithSymmetricHalf(char axis = 'H', int? seed = null, bool clearFirst = true, byte fillValue = Alive, byte emptyValue = Dead, System.Random rng = null)
     {
         if (_cells == null) return;
-        System.Random rnd = seed.HasValue ? new System.Random(seed.Value) : new System.Random();
+        System.Random rnd = seed.HasValue ? new System.Random(seed.Value) : (rng ?? new System.Random());
 
         if (clearFirst)
         {
@@ -853,7 +728,7 @@ public class Grid
             }
         }
 
-        if (axis == 'V') // sol yarýmý üret, saða kopyala
+        if (axis == 'V') // build left half and mirror to the right
         {
             int mid = (Width + 1) / 2;
             for (int y = 1; y <= Height; y++)
@@ -868,7 +743,7 @@ public class Grid
                 }
             }
         }
-        else if (axis == 'H') // üst yarýmý üret, alta kopyala
+        else if (axis == 'H') // build top half and mirror downward
         {
             int mid = (Height + 1) / 2;
             for (int y = 1; y <= mid; y++)
@@ -883,7 +758,7 @@ public class Grid
                 }
             }
         }
-        else // 'Q' : sol-üst üret, diðer üç çeyreðe yansýt
+        else // 'Q' : build top-left quarter and mirror to all quadrants
         {
             int midX = (Width + 1) / 2;
             int midY = (Height + 1) / 2;
@@ -898,9 +773,9 @@ public class Grid
                     int xr = Width - x + 1;
                     int yr = Height - y + 1;
 
-                    _cells[row + xr] = _cells[row + x];                 // sað-üst
-                    _cells[yr * PWidth + x] = _cells[row + x];          // sol-alt
-                    _cells[yr * PWidth + xr] = _cells[row + x];         // sað-alt
+                    _cells[row + xr] = _cells[row + x];                 // top-right
+                    _cells[yr * PWidth + x] = _cells[row + x];          // bottom-left
+                    _cells[yr * PWidth + xr] = _cells[row + x];         // bottom-right
                 }
             }
         }
@@ -910,24 +785,14 @@ public class Grid
 
     #region CircleRingGrid
     /// <summary>
-    /// Merkezde eþmerkezli halka ýzgarasý çizer.
+    /// Draws concentric rings around the center.
     /// </summary>
-    /// <param name="ringCount">Halka sayýsý.</param>
-    /// <param name="ringThickness">Her halkanýn kalýnlýðý (>=1).</param>
-    /// <param name="spacing">Halkalar arasý boþluk (>=0).</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // 3 halka
-    /// StartWithCircleRingGrid();
-    /// // Daha kalýn ve aralýklý
-    /// StartWithCircleRingGrid(4, 2, 2);
-    /// // Üstüne yaz
-    /// StartWithCircleRingGrid(5, 1, 1, false);
-    /// // Farklý deðerler
-    /// StartWithCircleRingGrid(2, 3, 1, true, 2, 0);
-    /// </example>
+    /// <param name="ringCount">Number of rings to draw.</param>
+    /// <param name="ringThickness">Thickness of each ring in cells.</param>
+    /// <param name="spacing">Spacing between rings.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithCircleRingGrid(int ringCount = 3, int ringThickness = 1, int spacing = 1, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -956,7 +821,7 @@ public class Grid
             {
                 int dx = x - cx;
                 int d2 = dx * dx + dy * dy;
-                // Halkalarýn dýþ yarýçaplarý: r_k = (k+1)*ringThickness + k*spacing
+                // Outer radius of ring k: (k+1)*ringThickness + k*spacing
                 for (int k = 0; k < ringCount; k++)
                 {
                     int outer = (k + 1) * ringThickness + k * spacing;
@@ -978,23 +843,13 @@ public class Grid
 
     #region RadialSpokes
     /// <summary>
-    /// Merkezden çýkan eþit açýlý ýþýnlar (spoke) çizer. Bresenham benzeri çizim, kalýnlýk destekli.
+    /// Draws equally spaced spokes from the center.
     /// </summary>
-    /// <param name="spokeCount">Kol sayýsý (>=1).</param>
-    /// <param name="thickness">Çizgi kalýnlýðý (>=1).</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // 8 kollu
-    /// StartWithRadialSpokes();
-    /// // 12 kollu, kalýnlýk 2
-    /// StartWithRadialSpokes(12, 2);
-    /// // Üstüne yaz
-    /// StartWithRadialSpokes(6, 1, false);
-    /// // Farklý deðerler
-    /// StartWithRadialSpokes(10, 3, true, 2, 0);
-    /// </example>
+    /// <param name="spokeCount">Number of spokes.</param>
+    /// <param name="thickness">Line thickness in cells.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithRadialSpokes(int spokeCount = 8, int thickness = 1, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -1014,7 +869,7 @@ public class Grid
         }
 
         int R = Math.Max(Width, Height);
-        // Bresenham ile merkezden sýnýr noktasýna
+        // Bresenham ile merkezden sÃ½nÃ½r noktasÃ½na
         void Plot(int x, int y)
         {
             if (x < 1 || x > Width || y < 1 || y > Height) return;
@@ -1064,25 +919,15 @@ public class Grid
 
     #region Stripe
     /// <summary>
-    /// Dikey veya yatay þeritler çizer (çizgi-boþluk deseni).
+    /// Draws repeating vertical or horizontal stripes.
     /// </summary>
-    /// <param name="vertical">true: dikey, false: yatay.</param>
-    /// <param name="stripeWidth">Þerit kalýnlýðý (>=1).</param>
-    /// <param name="gap">Þeritler arasý boþluk (>=0).</param>
-    /// <param name="offset">Baþlangýç ofseti (piksel).</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <example>
-    /// // Dikey þeritler
-    /// StartWithStripe();
-    /// // Yatay ve kalýn
-    /// StartWithStripe(false, 3, 2);
-    /// // Ofsetli ve üstüne yaz
-    /// StartWithStripe(true, 2, 3, 1, false);
-    /// // Farklý deðerler
-    /// StartWithStripe(true, 1, 1, 0, true, 2, 0);
-    /// </example>
+    /// <param name="vertical">True for vertical stripes; false for horizontal.</param>
+    /// <param name="stripeWidth">Stripe thickness in cells.</param>
+    /// <param name="gap">Gap between stripes.</param>
+    /// <param name="offset">Pixel offset to start the pattern.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
     public void StartWithStripe(bool vertical = true, int stripeWidth = 2, int gap = 2, int offset = 0, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0)
     {
         if (_cells == null) return;
@@ -1126,24 +971,14 @@ public class Grid
 
     #region Square_Alt
     /// <summary>
-    /// Kare çerçeve (hollow) veya dolu kare: StartWithSquare ile ayný ama adý netlik için.
+    /// Alias for StartWithSquare for explicit intent.
     /// </summary>
-    /// <param name="size">Kenarlýk boyutu.</param>
+    /// <param name="size">KenarlÃ½k boyutu.</param>
     /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <param name="hollow">true ise çerçeve, false ise dolu kare.</param>
-    /// <param name="thickness">Çerçeve kalýnlýðý.</param>
-    /// <example>
-    /// // Dolu kare
-    /// StartWithSquare(5);
-    /// // Hollow kare
-    /// StartWithSquare(10, true, 1, 0, true, 2);
-    /// // Üstüne yaz
-    /// StartWithSquare(7, false);
-    /// // Farklý deðerler
-    /// StartWithSquare(9, true, 2, 0, true, 3);
-    /// </example>
+    /// <param name="fillValue">Dolu deÃ°er.</param>
+    /// <param name="emptyValue">BoÃ¾ deÃ°er.</param>
+    /// <param name="hollow">Draw outline only when true.</param>
+    /// <param name="thickness">Outline thickness in cells.</param>
     public void StartWithSquare_Alt(int size, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0, bool hollow = false, int thickness = 1)
     {
         StartWithSquare(size, clearFirst, fillValue, emptyValue, hollow, thickness);
@@ -1153,20 +988,14 @@ public class Grid
 
     #region Circle_Alt
     /// <summary>
-    /// Merkeze göre çember/çember halkasý: StartWithCircle için alternatif ad.
+    /// Alias for StartWithCircle for explicit intent.
     /// </summary>
-    /// <param name="radius">Yarýçap.</param>
-    /// <param name="clearFirst">true ise temizler.</param>
-    /// <param name="fillValue">Dolu deðer.</param>
-    /// <param name="emptyValue">Boþ deðer.</param>
-    /// <param name="hollow">true ise halka.</param>
-    /// <param name="thickness">Halka kalýnlýðý.</param>
-    /// <example>
-    /// StartWithCircle(6);
-    /// StartWithCircle(8, true, 1, 0, true, 2);
-    /// StartWithCircle(5, false);
-    /// StartWithCircle(7, true, 2, 0);
-    /// </example>
+    /// <param name="radius">Circle radius.</param>
+    /// <param name="clearFirst">Clear the interior before drawing.</param>
+    /// <param name="fillValue">Value for filled cells.</param>
+    /// <param name="emptyValue">Value used when clearing.</param>
+    /// <param name="hollow">When true, draw only the ring.</param>
+    /// <param name="thickness">Ring thickness in cells.</param>
     public void StartWithCircle_Alt(int radius, bool clearFirst = true, byte fillValue = 1, byte emptyValue = 0, bool hollow = false, int thickness = 1)
     {
         StartWithCircle(radius, clearFirst, fillValue, emptyValue, hollow, thickness);
